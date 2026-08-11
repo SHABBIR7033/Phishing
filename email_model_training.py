@@ -91,19 +91,25 @@ def build_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
     feats["credential_request_flag"] = combined_text.apply(
         lambda t: int(count_terms(t, CREDENTIAL_TERMS) > 0)
     )
-    feats["link_count"] = df["body"].fillna("").apply(lambda b: len(LINK_PATTERN.findall(b)))
-    feats["link_domain_mismatch"] = df["body"].fillna("").apply(extract_link_mismatch)
+    # This dataset's HTML body lives in body_html (falls back to body_plain,
+    # which has no <a href> tags so link features will read 0 for those rows).
+    body_col = df["body_html"].fillna(df["body_plain"]).fillna("")
+    feats["link_count"] = body_col.apply(lambda b: len(LINK_PATTERN.findall(b)))
+    feats["link_domain_mismatch"] = body_col.apply(extract_link_mismatch)
 
-    feats["spf_pass"] = df.get("spf_pass", 0).fillna(0).astype(int)
-    feats["dkim_pass"] = df.get("dkim_pass", 0).fillna(0).astype(int)
+    # spf_result/dkim_result are 'pass'/'fail'/'neutral' strings in this dataset,
+    # not pre-computed 0/1 flags -> convert to a pass flag here.
+    feats["spf_pass"] = (df.get("spf_result", pd.Series("", index=df.index)).fillna("").str.lower() == "pass").astype(int)
+    feats["dkim_pass"] = (df.get("dkim_result", pd.Series("", index=df.index)).fillna("").str.lower() == "pass").astype(int)
 
-    from_domain = df.get("from_addr", "").fillna("").str.extract(r"@([\w.-]+)")[0].fillna("")
-    display_name = df.get("display_name", "").fillna("")
+    # This dataset has from_address (not from_addr) and no display_name column.
+    from_domain = df.get("from_address", pd.Series("", index=df.index)).fillna("").str.extract(r"@([\w.-]+)")[0].fillna("")
+    display_name = df.get("display_name", pd.Series("", index=df.index)).fillna("")
     feats["display_name_mismatch"] = [
         int(bool(dn) and dom not in dn.lower()) for dn, dom in zip(display_name, from_domain)
     ]
 
-    reply_to_domain = df.get("reply_to", "").fillna("").str.extract(r"@([\w.-]+)")[0].fillna("")
+    reply_to_domain = df.get("reply_to", pd.Series("", index=df.index)).fillna("").str.extract(r"@([\w.-]+)")[0].fillna("")
     feats["reply_to_mismatch"] = [
         int(bool(rt) and rt != frm) for rt, frm in zip(reply_to_domain, from_domain)
     ]
@@ -113,8 +119,8 @@ def build_engineered_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def train():
     df = pd.read_csv(RAW_CSV)
-    df = df.dropna(subset=["body", "label"]).drop_duplicates(subset=["subject", "body"])
-    df["clean_body"] = df["body"].apply(clean_body)
+    df = df.dropna(subset=["body_plain", "label"]).drop_duplicates(subset=["subject", "body_plain"])
+    df["clean_body"] = df["body_plain"].apply(clean_body)
     print(f"Loaded {len(df)} rows | phishing={df['label'].sum()} legit={(df['label']==0).sum()}")
 
     y = df["label"].astype(int)
