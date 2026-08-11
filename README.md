@@ -8,6 +8,8 @@ for both classifiers.
 - URL classifier (Random Forest, 13 lexical/structural features)
 - Email classifier (TF-IDF + engineered features, Logistic Regression / Linear SVM)
 - Streamlit UI to test either in your browser
+## Live Demo
+   https://phishing-wouq29y6rs2dkupc9hdfjw.streamlit.app/
 
 ## Project structure
 
